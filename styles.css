@@ -1,0 +1,195 @@
+/* 全局样式重置 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Arial', 'Microsoft YaHei', sans-serif;
+    background-color: #2c3e50;
+    color: #ecf0f1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+/* 游戏容器 */
+.game-container {
+    text-align: center;
+    max-width: 850px;
+    width: 100%;
+}
+
+/* 游戏标题 */
+.game-title {
+    font-size: 2.5rem;
+    margin-bottom: 20px;
+    color: #3498db;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* 计分板 */
+.scoreboard {
+    display: flex;
+    justify-content: space-around;
+    margin-bottom: 20px;
+    padding: 15px;
+    background-color: rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+    font-size: 1.5rem;
+}
+
+.player-score, .ai-score {
+    font-weight: bold;
+}
+
+.player-score span, .ai-score span {
+    color: #e74c3c;
+    margin-left: 5px;
+}
+
+/* 游戏画布 */
+#gameCanvas {
+    border: 3px solid #34495e;
+    border-radius: 5px;
+    background-color: #1a1a1a;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+    cursor: crosshair;
+}
+
+/* 游戏信息 */
+.game-info {
+    margin: 15px 0;
+    font-size: 1.2rem;
+    color: #3498db;
+    font-weight: bold;
+}
+
+/* 游戏说明 */
+.game-instructions {
+    background-color: rgba(0, 0, 0, 0.7);
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 20px;
+    color: white;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(5px);
+    text-align: left;
+}
+
+.game-instructions h3 {
+    color: #3498db;
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 1.2em;
+    text-align: center;
+}
+
+.game-instructions ul {
+    list-style-type: none;
+    padding-left: 0;
+    margin: 0;
+    line-height: 1.6;
+}
+
+.game-instructions li {
+    margin: 10px 0;
+    padding-left: 25px;
+    position: relative;
+    font-size: 0.95em;
+    line-height: 1.4;
+}
+
+.game-instructions li:before {
+    content: "▶";
+    color: #3498db;
+    position: absolute;
+    left: 0;
+    transition: transform 0.2s ease;
+}
+
+.game-instructions:hover li:before {
+    transform: translateX(2px);
+}
+
+/* 游戏控制说明卡片 */
+.controls-card {
+    background: linear-gradient(135deg, #2c3e50, #34495e);
+    border-radius: 10px;
+    padding: 20px;
+    margin: 15px 0;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.controls-title {
+    color: #f39c12;
+    font-size: 1.1em;
+    margin-bottom: 10px;
+    font-weight: bold;
+}
+
+.controls-description {
+    color: #ecf0f1;
+    margin: 5px 0;
+    font-size: 0.9em;
+}
+
+/* 游戏技巧提示 */
+.game-tips {
+    background-color: rgba(243, 156, 18, 0.1);
+    border-left: 3px solid #f39c12;
+    padding: 15px;
+    margin: 15px 0;
+    border-radius: 0 5px 5px 0;
+}
+
+.tips-title {
+    color: #f39c12;
+    font-size: 1em;
+    margin-bottom: 8px;
+    font-weight: bold;
+}
+
+.tips-content {
+    color: #ecf0f1;
+    font-size: 0.85em;
+    line-height: 1.5;
+}
+
+/* 响应式设计 */
+@media (max-width: 850px) {
+    #gameCanvas {
+        width: 100%;
+        height: auto;
+    }
+    
+    .game-title {
+        font-size: 2rem;
+    }
+    
+    .scoreboard {
+        font-size: 1.2rem;
+    }
+}
+
+/* 画布悬停效果 */
+#gameCanvas:hover {
+    border-color: #3498db;
+    transition: border-color 0.3s ease;
+}
+
+/* 动画效果 */
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); }
+}
+
+/* 强调状态时的动画 */
+.game-info.emphasis {
+    animation: pulse 1s infinite;
+    color: #e74c3c;
+}
