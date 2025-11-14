@@ -13,6 +13,115 @@ let playerScore = 0;
 let aiScore = 0;
 let winningScore = 11; // 获胜分数
 
+// 难度设置
+let currentDifficulty = 'medium'; // 默认难度：适中
+
+// 不同难度级别的AI参数配置
+const difficultySettings = {
+    easy: {
+        aiSpeed: 4,          // AI球拍移动速度较慢
+        reactionTime: 150,   // 反应时间较长（毫秒）
+        predictionAccuracy: 0.6, // 预测准确度较低
+        maxPredictionSteps: 3,   // 最大预测步数较少
+        errorMargin: 15      // 误差范围较大
+    },
+    medium: {
+        aiSpeed: 6,          // AI球拍移动速度中等
+        reactionTime: 80,    // 反应时间中等
+        predictionAccuracy: 0.8, // 预测准确度较高
+        maxPredictionSteps: 5,   // 最大预测步数中等
+        errorMargin: 8       // 误差范围中等
+    },
+    hard: {
+        aiSpeed: 10,         // AI球拍移动速度很快
+        reactionTime: 30,    // 反应时间很短
+        predictionAccuracy: 0.95, // 预测准确度极高
+        maxPredictionSteps: 8,   // 最大预测步数较多
+        errorMargin: 3       // 误差范围很小
+    }
+};
+
+// 获取当前难度的设置
+function getCurrentDifficultySettings() {
+    return difficultySettings[currentDifficulty];
+}
+
+// 设置游戏难度
+function setDifficulty(difficulty) {
+    if (difficultySettings.hasOwnProperty(difficulty)) {
+        // 保存旧难度设置
+        const oldSettings = getCurrentDifficultySettings();
+        
+        // 更新当前难度
+        currentDifficulty = difficulty;
+        
+        // 更新按钮的active状态
+        document.querySelectorAll('.difficulty-btn').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        document.getElementById(`${difficulty}-difficulty`).classList.add('active');
+        
+        // 获取新难度设置
+        const newSettings = getCurrentDifficultySettings();
+        
+        // 显示难度更改提示
+        let difficultyText = '';
+        switch(difficulty) {
+            case 'easy':
+                difficultyText = '简单';
+                break;
+            case 'medium':
+                difficultyText = '适中';
+                break;
+            case 'hard':
+                difficultyText = '直面雷霆的威光';
+                break;
+        }
+        
+        // 显示难度变更信息
+        gameStatusElement.textContent = `难度已更改为: ${difficultyText}`;
+        
+        // 根据难度设置不同的提示颜色
+        if (difficulty === 'easy') {
+            gameStatusElement.style.color = '#4ade80';
+        } else if (difficulty === 'medium') {
+            gameStatusElement.style.color = '#facc15';
+        } else if (difficulty === 'hard') {
+            gameStatusElement.style.color = '#ef4444';
+        }
+        
+        // 2秒后清除提示
+        setTimeout(() => {
+            if (!gameOver && !ball.isServing) {
+                gameStatusElement.textContent = '';
+            } else if (ball.isServing) {
+                gameStatusElement.textContent = '准备发球';
+                gameStatusElement.style.color = '#3498db';
+            }
+        }, 2000);
+        
+        // 如果游戏正在进行，平滑过渡到新的AI速度设置
+        if (gameStarted && !gameOver) {
+            // 渐进式改变AI速度，避免突变
+            const speedDifference = newSettings.aiSpeed - oldSettings.aiSpeed;
+            const steps = 10; // 分10步完成过渡
+            const stepSize = speedDifference / steps;
+            
+            let currentStep = 0;
+            const transitionInterval = setInterval(() => {
+                if (currentStep < steps && !gameOver) {
+                    ai.speed += stepSize;
+                    currentStep++;
+                } else {
+                    // 确保最终设置为精确值
+                    ai.speed = newSettings.aiSpeed;
+                    clearInterval(transitionInterval);
+                }
+            }, 50); // 每50ms更新一次
+        }
+    }
+}
+
 // 游戏对象
 const paddleWidth = 10;
 const paddleHeight = 80;
@@ -52,14 +161,93 @@ const ball = {
 // 鼠标位置
 let mouseY = canvas.height / 2;
 
+// 设备检测 - 增强版，更准确的设备类型判断
+const isMobile = () => {
+    // 优先检查触摸支持
+    const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    // 结合用户代理和屏幕尺寸判断
+    const isSmallScreen = window.innerWidth <= 768;
+    const mobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    
+    return hasTouch && (isSmallScreen || mobileUserAgent);
+};
+
+// 存储设备类型
+let deviceType = isMobile() ? 'mobile' : 'desktop';
+// 跟踪最后一次触摸事件时间戳，避免触摸和鼠标事件冲突
+let lastTouchTime = 0;
+
 // 初始化游戏
 function initGame() {
     // 重置游戏状态
     resetGame();
     
-    // 添加事件监听器
-    canvas.addEventListener('mousemove', handleMouseMove);
-    canvas.addEventListener('click', function(e) { handleMouseClick(e); });
+    // 添加事件监听器，确保桌面和移动端操作互不干扰
+    setupEventListeners();
+    
+    // 难度按钮事件监听器
+    document.querySelectorAll('.difficulty-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const difficulty = this.getAttribute('data-difficulty');
+            setDifficulty(difficulty);
+        });
+    });
+    
+    // 添加窗口大小变化监听，重新检测设备类型
+window.addEventListener('resize', function() {
+    const newDeviceType = isMobile() ? 'mobile' : 'desktop';
+    if (newDeviceType !== deviceType) {
+        deviceType = newDeviceType;
+        
+        // 更新触摸设置
+        touchSettings.sensitivity = deviceType === 'mobile' ? 0.9 : 0.8;
+        touchSettings.smoothingFactor = deviceType === 'mobile' ? 0.2 : 0.3;
+        touchSettings.minMoveThreshold = deviceType === 'mobile' ? 2 : 3;
+        touchSettings.edgeBufferZone = deviceType === 'mobile' ? 15 : 10;
+        touchSettings.responseDelay = deviceType === 'mobile' ? 8 : 16;
+        
+        // 重新设置事件监听器
+        setupEventListeners();
+    }
+    
+    // 调整球拍位置以适应新的画布大小
+    if (gameStarted && !gameOver && !gamePaused) {
+        updatePaddlePosition(mouseY);
+    }
+});
+
+// 添加方向变化监听（针对移动设备）
+window.addEventListener('orientationchange', function() {
+    // 延迟执行以确保浏览器已完成方向变化
+    setTimeout(() => {
+        const newDeviceType = isMobile() ? 'mobile' : 'desktop';
+        if (newDeviceType !== deviceType) {
+            deviceType = newDeviceType;
+            
+            // 更新触摸设置
+            touchSettings.sensitivity = deviceType === 'mobile' ? 0.9 : 0.8;
+            touchSettings.smoothingFactor = deviceType === 'mobile' ? 0.2 : 0.3;
+            touchSettings.minMoveThreshold = deviceType === 'mobile' ? 2 : 3;
+            touchSettings.edgeBufferZone = deviceType === 'mobile' ? 15 : 10;
+            touchSettings.responseDelay = deviceType === 'mobile' ? 8 : 16;
+            
+            // 重新设置事件监听器
+            setupEventListeners();
+        }
+        
+        // 调整球拍位置以适应新的画布大小
+        if (gameStarted && !gameOver && !gamePaused) {
+            updatePaddlePosition(mouseY);
+        }
+        
+        // 确保游戏状态正确绘制
+        draw();
+    }, 100);
+});
+    
+    // 应用默认难度设置
+    const defaultSettings = getCurrentDifficultySettings();
+    ai.speed = defaultSettings.aiSpeed;
     
     // 开始游戏循环
     gameLoop();
@@ -74,6 +262,11 @@ function resetGame() {
     gameStarted = false;
     gamePaused = false;
     gameOver = false;
+    
+    // 应用当前难度设置到AI
+    const settings = getCurrentDifficultySettings();
+    ai.speed = settings.aiSpeed;
+    
     gameStatusElement.textContent = '点击开始游戏';
     gameStatusElement.classList.remove('emphasis');
 }
@@ -106,16 +299,293 @@ function updateScore() {
 
 // 处理鼠标移动
 function handleMouseMove(e) {
+    // 如果是从触摸事件触发的鼠标事件，则忽略（防止冲突）
+    if (Date.now() - lastTouchTime < 250) return;
+    
     const rect = canvas.getBoundingClientRect();
     // 计算鼠标相对于画布的位置
     const mouseYRelative = e.clientY - rect.top;
+    mouseY = mouseYRelative; // 更新全局鼠标位置
     
+    // 更新球拍位置
+    updatePaddlePosition(mouseYRelative);
+}
+
+// 触摸操作相关配置
+const touchSettings = {
+    // 触摸响应灵敏度，值越小越灵敏
+    sensitivity: deviceType === 'mobile' ? 0.9 : 0.8, // 移动设备更敏感
+    // 触摸区域扩展，增加容错率（像素）
+    touchAreaExtension: 25,
+    // 触摸平滑移动配置
+    smoothingEnabled: true,
+    smoothingFactor: deviceType === 'mobile' ? 0.2 : 0.3, // 移动设备更流畅
+    // 最小移动阈值，避免微小触摸抖动
+    minMoveThreshold: deviceType === 'mobile' ? 2 : 3, // 移动设备更小的移动阈值
+    // 屏幕边缘缓冲区，提高边缘操作体验
+    edgeBufferZone: deviceType === 'mobile' ? 15 : 10,
+    // 响应延迟，提高操作流畅度
+    responseDelay: deviceType === 'mobile' ? 8 : 16
+};
+
+// 记录上一次触摸位置，用于实现平滑移动
+let lastTouchY = null;
+// 记录上一次有效的触摸位置
+let lastValidTouchY = null;
+// 记录触摸开始时间，用于区分点击和滑动
+let touchStartTime = 0;
+// 记录触摸开始位置
+let touchStartY = 0;
+// 是否为点击操作标志
+let isTapOperation = false;
+
+// 处理触摸开始
+function handleTouchStart(e) {
+    // 只有在移动设备上才阻止默认行为
+    if (deviceType === 'mobile') {
+        e.preventDefault();
+    }
+    
+    // 更新最后触摸时间戳
+    lastTouchTime = Date.now();
+    
+    // 记录触摸开始时间和位置
+    touchStartTime = Date.now();
+    const touches = e.touches;
+    if (touches.length > 0) {
+        const rect = canvas.getBoundingClientRect();
+        touchStartY = touches[0].clientY - rect.top;
+        lastValidTouchY = touchStartY;
+        
+        // 默认假设是点击操作
+        isTapOperation = true;
+        
+        // 保存最后触摸位置
+        lastTouchY = touchStartY;
+        // 更新鼠标位置（用于球拍移动）
+        mouseY = touchStartY;
+        
+        // 快速响应，不等待其他处理
+        requestAnimationFrame(() => {
+            // 更新球拍位置
+            updatePaddlePosition(touchStartY);
+            
+            // 如果球在发球状态，可以直接触发发球
+            if (ball.isServing && gameStarted) {
+                const touchX = touches[0].clientX - rect.left;
+                serveBall(touchX, touchStartY);
+            }
+        });
+    }
+}
+
+// 处理触摸移动
+function handleTouchMove(e) {
+    // 只有在移动设备上才阻止默认行为
+    if (deviceType === 'mobile') {
+        e.preventDefault();
+    }
+    
+    // 更新最后触摸时间戳
+    lastTouchTime = Date.now();
+    
+    if (gameOver) return;
+    
+    // 获取触摸位置
+    const touches = e.touches;
+    if (!touches || touches.length === 0) return;
+    
+    // 计算触摸位置相对于画布的坐标
+    const rect = canvas.getBoundingClientRect();
+    const touchY = touches[0].clientY - rect.top;
+    
+    // 计算移动距离，如果超过阈值则标记为非点击操作
+    const moveDistance = Math.abs(touchY - touchStartY);
+    if (moveDistance > touchSettings.minMoveThreshold) {
+        isTapOperation = false;
+    }
+    
+    // 更新最后触摸位置
+    lastTouchY = touchY;
+    
+    // 实现精确的触摸位置映射到球拍位置
+    // 1. 应用屏幕边缘缓冲区处理
+    let adjustedY = touchY;
+    if (touchY < touchSettings.edgeBufferZone) {
+        adjustedY = 0 + player.height / 2;
+    } else if (touchY > canvas.height - touchSettings.edgeBufferZone) {
+        adjustedY = canvas.height - player.height / 2;
+    }
+    
+    // 2. 实现触摸平滑移动算法
+    if (touchSettings.smoothingEnabled && lastTouchY !== null) {
+        // 根据设备类型调整平滑因子
+        const currentSmoothing = touchSettings.sensitivity;
+        const smoothedY = lastTouchY + (adjustedY - lastTouchY) * currentSmoothing;
+        adjustedY = smoothedY;
+    }
+    
+    // 3. 添加触摸区域容错处理，扩大可操作区域
+    if (adjustedY < 0) adjustedY = 0;
+    if (adjustedY > canvas.height) adjustedY = canvas.height;
+    
+    // 记录本次触摸位置用于下次平滑计算
+    lastValidTouchY = touchY;
+    // 更新鼠标位置（用于球拍移动）
+    mouseY = adjustedY;
+    
+    // 使用requestAnimationFrame确保平滑更新
+    requestAnimationFrame(() => {
+        updatePaddlePosition(adjustedY);
+    });
+}
+
+// 添加触摸结束事件处理，重置触摸状态并处理点击操作
+function handleTouchEnd(e) {
+    // 只有在移动设备上才阻止默认行为
+    if (deviceType === 'mobile') {
+        e.preventDefault();
+    }
+    
+    // 更新最后触摸时间戳
+    lastTouchTime = Date.now();
+    
+    // 计算触摸持续时间
+    const touchDuration = Date.now() - touchStartTime;
+    
+    // 判断是否为快速点击操作（点击时间短且移动距离小）
+    if (isTapOperation && touchDuration < 200 && lastValidTouchY !== null) {
+        // 处理触摸点击操作
+        handleTouchTap();
+    }
+    
+    // 重置触摸状态，但保留最后有效位置用于快速响应下次触摸
+    setTimeout(() => {
+        lastTouchY = null;
+    }, touchSettings.responseDelay);
+}
+
+// 处理触摸点击操作
+function handleTouchTap() {
+    if (gameOver) {
+        // 游戏结束时点击重新开始
+        resetGame();
+        return;
+    }
+    
+    if (gamePaused && gameStarted) {
+        // 游戏暂停时点击继续
+        gamePaused = false;
+        gameStatusElement.textContent = '游戏继续...';
+        setTimeout(() => {
+            if (!gameOver && !gamePaused) {
+                gameStatusElement.textContent = ball.isServing ? '轮到你发球' : '游戏进行中...';
+            }
+        }, 1000);
+        return;
+    }
+    
+    if (!gameStarted) {
+        // 开始新游戏
+        gameStarted = true;
+        
+        // 应用当前难度设置
+        const settings = getCurrentDifficultySettings();
+        ai.speed = settings.aiSpeed;
+        
+        // 显示难度信息
+        let difficultyText = '';
+        switch(currentDifficulty) {
+            case 'easy':
+                difficultyText = '简单';
+                break;
+            case 'medium':
+                difficultyText = '适中';
+                break;
+            case 'hard':
+                difficultyText = '直面雷霆的威光';
+                break;
+        }
+        
+        gameStatusElement.textContent = `难度: ${difficultyText} - 轮到你发球`;
+        
+        // 初始化球的位置，但保持发球状态
+        ball.isServing = true;
+    }
+}
+
+// 统一的球拍位置更新函数 - 优化移动端体验
+function updatePaddlePosition(yPosition) {
     // 计算球拍中心位置，确保球拍不会超出画布边界
-    player.y = mouseYRelative - player.height / 2;
+    let targetY = yPosition - player.height / 2;
     
-    // 限制球拍在画布范围内
+    // 优化移动端：添加边界平滑处理，避免生硬的边界碰撞感
+    const borderSmoothness = 5; // 边界平滑系数
+    
+    // 上边界平滑处理
+    if (targetY < 0) {
+        // 靠近上边界时，根据距离逐渐降低移动速度
+        const distanceToBorder = Math.abs(targetY);
+        if (distanceToBorder < borderSmoothness) {
+            // 添加弹性效果，使触摸靠近边界时仍有响应空间
+            targetY = -distanceToBorder * 0.5;
+        } else {
+            targetY = 0;
+        }
+    }
+    // 下边界平滑处理
+    else if (targetY > canvas.height - player.height) {
+        const distanceToBorder = targetY - (canvas.height - player.height);
+        if (distanceToBorder < borderSmoothness) {
+            // 添加弹性效果
+            targetY = (canvas.height - player.height) + distanceToBorder * 0.5;
+        } else {
+            targetY = canvas.height - player.height;
+        }
+    }
+    
+    // 应用最终位置
+    player.y = targetY;
+    
+    // 确保位置在有效范围内
     if (player.y < 0) player.y = 0;
     if (player.y > canvas.height - player.height) player.y = canvas.height - player.height;
+}
+
+// 重置所有事件监听器
+function resetEventListeners() {
+    // 移除所有事件监听器
+    canvas.removeEventListener('mousemove', handleMouseMove);
+    canvas.removeEventListener('click', handleMouseClick);
+    canvas.removeEventListener('touchstart', handleTouchStart);
+    canvas.removeEventListener('touchmove', handleTouchMove);
+    canvas.removeEventListener('touchend', handleTouchEnd);
+}
+
+// 设置事件监听器 - 改进版本，支持混合输入环境
+function setupEventListeners() {
+    // 移除现有的事件监听器以避免重复
+    resetEventListeners();
+    
+    // 为所有设备添加基础事件监听器，但添加冲突处理逻辑
+    // 移动设备上优先使用触摸事件，桌面设备优先使用鼠标事件
+    
+    // 添加鼠标事件支持
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('click', function(e) { 
+        // 如果是从触摸事件触发的鼠标事件，则忽略
+        if (Date.now() - lastTouchTime >= 250) {
+            handleMouseClick(e);
+        }
+    });
+    
+    // 触摸事件监听器
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    
+    // 防止右键菜单出现
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 }
 
 // 添加鼠标离开画布时的处理
@@ -152,7 +622,27 @@ function handleMouseClick(e) {
     if (!gameStarted) {
         // 开始新游戏
         gameStarted = true;
-        gameStatusElement.textContent = '轮到你发球';
+        
+        // 应用当前难度设置
+        const settings = getCurrentDifficultySettings();
+        ai.speed = settings.aiSpeed;
+        
+        // 显示难度信息
+        let difficultyText = '';
+        switch(currentDifficulty) {
+            case 'easy':
+                difficultyText = '简单';
+                break;
+            case 'medium':
+                difficultyText = '适中';
+                break;
+            case 'hard':
+                difficultyText = '直面雷霆的威光';
+                break;
+        }
+        
+        gameStatusElement.textContent = `难度: ${difficultyText} - 轮到你发球`;
+        
         // 初始化球的位置，但保持发球状态
         ball.isServing = true;
     } else if (ball.isServing) {
@@ -533,6 +1023,9 @@ function gameLoop() {
 
 // 智能AI控制逻辑
 function updateAI() {
+    // 获取当前难度设置
+    const settings = getCurrentDifficultySettings();
+    
     // 预测球到达AI球拍位置的时间
     let predictedY = ball.y;
     let timeToReachAI;
@@ -543,11 +1036,14 @@ function updateAI() {
         timeToReachAI = (ai.x - ball.x) / ball.dx;
         
         if (timeToReachAI > 0) {
-            // 模拟球的垂直反弹，预测最终到达AI球拍时的Y位置
-            predictedY = simulateBounces(ball.x, ball.y, ball.dx, ball.dy, timeToReachAI);
+            // 根据预测准确度决定是否进行预测
+            if (Math.random() < settings.predictionAccuracy) {
+                // 模拟球的垂直反弹，预测最终到达AI球拍时的Y位置
+                predictedY = simulateBounces(ball.x, ball.y, ball.dx, ball.dy, timeToReachAI, settings.maxPredictionSteps);
+            }
             
-            // 添加一些随机性，使AI更加真实
-            const randomFactor = (Math.random() - 0.5) * 20;
+            // 添加基于难度的随机性误差
+            const randomFactor = (Math.random() - 0.5) * settings.errorMargin;
             predictedY += randomFactor;
         }
     }
@@ -564,21 +1060,28 @@ function updateAI() {
         }
     }
     
+    // 根据难度调整反应速度因子
+    const speedFactor = ai.speed / 100; // 使用AI速度属性来计算反应速度因子
+    
+    // 添加反应时间延迟效果
+    const reactionDelayFactor = settings.reactionTime / 200;
+    const effectiveSpeedFactor = speedFactor * (1 - reactionDelayFactor);
+    
     // 平滑移动到目标位置
-    const speedFactor = 0.05; // 调整AI反应速度
-    ai.y += (targetY - ai.y - ai.height / 2) * speedFactor;
+    ai.y += (targetY - ai.y - ai.height / 2) * effectiveSpeedFactor;
     
     // 限制AI球拍在画布内
     ai.y = Math.max(0, Math.min(canvas.height - ai.height, ai.y));
 }
 
 // 模拟球在预测时间内的垂直反弹
-function simulateBounces(startX, startY, dx, dy, time) {
+function simulateBounces(startX, startY, dx, dy, time, maxSteps = 5) {
     let y = startY;
     let currentDy = dy; // 复制dy，避免修改原始值
     let remainingTime = time;
+    let bounceCount = 0;
     
-    while (remainingTime > 0) {
+    while (remainingTime > 0 && bounceCount < maxSteps) {
         // 计算球到达上下边界所需的时间
         let timeToBoundary;
         let boundaryY;
@@ -598,6 +1101,7 @@ function simulateBounces(startX, startY, dx, dy, time) {
             remainingTime -= timeToBoundary;
             y = boundaryY;
             currentDy = -currentDy; // 反弹
+            bounceCount++;
         } else {
             // 否则，在剩余时间内移动
             y += currentDy * remainingTime;
