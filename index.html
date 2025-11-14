@@ -2,7 +2,10 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#2c3e50">
     <title>乒乓球游戏</title>
     <!-- 引入游戏样式文件 -->
     <link rel="stylesheet" href="styles.css">
@@ -27,11 +30,22 @@
         </div>
         
         <!-- 游戏说明 -->
+        <div class="game-difficulty">
+            <h3>选择难度</h3>
+            <div class="difficulty-buttons">
+                <button id="easy-difficulty" class="difficulty-btn" data-difficulty="easy">简单</button>
+                <button id="medium-difficulty" class="difficulty-btn active" data-difficulty="medium">适中</button>
+                <button id="hard-difficulty" class="difficulty-btn" data-difficulty="hard">直面雷霆的威光</button>
+            </div>
+        </div>
+        
         <div class="game-instructions">
             <h3>游戏操作说明</h3>
             <ul>
-                <li>移动鼠标控制玩家球拍</li>
-                <li>点击鼠标左键击球/发球</li>
+                <li class="desktop-only">移动鼠标控制玩家球拍</li>
+                <li class="desktop-only">点击鼠标左键击球/发球</li>
+                <li class="mobile-only">触摸屏幕并滑动控制球拍</li>
+                <li class="mobile-only">触摸屏幕发球和击球</li>
                 <li>将球击过对方区域得分</li>
                 <li>率先获得11分且领先至少2分即可获胜</li>
             </ul>
@@ -39,10 +53,12 @@
             <!-- 游戏控制说明卡片 -->
             <div class="controls-card">
                 <div class="controls-title">游戏控制详解</div>
-                <div class="controls-description">• 鼠标移动：精确控制球拍上下移动</div>
-                <div class="controls-description">• 鼠标点击：在发球状态下点击可以决定发球角度和力度</div>
-                <div class="controls-description">• 击球增强：当球接近时点击可以给球额外的速度</div>
-                <div class="controls-description">• 重新开始：游戏结束后点击任意位置重新开始</div>
+                <div class="controls-description desktop-only">• 鼠标移动：精确控制球拍上下移动</div>
+                <div class="controls-description desktop-only">• 鼠标点击：在发球状态下点击可以决定发球角度和力度</div>
+                <div class="controls-description mobile-only">• 触摸滑动：通过上下滑动精确控制球拍位置</div>
+                <div class="controls-description mobile-only">• 触摸屏幕：在发球状态下触摸决定发球角度和力度</div>
+                <div class="controls-description">• 击球增强：当球接近时点击/触摸可以给球额外的速度</div>
+                <div class="controls-description">• 重新开始：游戏结束后点击/触摸任意位置重新开始</div>
             </div>
             
             <!-- 游戏技巧提示 -->
