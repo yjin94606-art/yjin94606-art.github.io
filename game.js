@@ -311,22 +311,33 @@ function handleMouseMove(e) {
     updatePaddlePosition(mouseYRelative);
 }
 
-// 触摸操作相关配置
+// 触摸操作相关配置 - 增强版
 const touchSettings = {
-    // 触摸响应灵敏度，值越小越灵敏
-    sensitivity: deviceType === 'mobile' ? 0.9 : 0.8, // 移动设备更敏感
-    // 触摸区域扩展，增加容错率（像素）
+    // 基础设置
+    sensitivity: deviceType === 'mobile' ? 0.95 : 0.85, // 移动设备更敏感
     touchAreaExtension: 25,
-    // 触摸平滑移动配置
     smoothingEnabled: true,
-    smoothingFactor: deviceType === 'mobile' ? 0.2 : 0.3, // 移动设备更流畅
-    // 最小移动阈值，避免微小触摸抖动
-    minMoveThreshold: deviceType === 'mobile' ? 2 : 3, // 移动设备更小的移动阈值
-    // 屏幕边缘缓冲区，提高边缘操作体验
-    edgeBufferZone: deviceType === 'mobile' ? 15 : 10,
-    // 响应延迟，提高操作流畅度
-    responseDelay: deviceType === 'mobile' ? 8 : 16
+    smoothingFactor: deviceType === 'mobile' ? 0.15 : 0.3, // 移动设备更流畅
+    minMoveThreshold: deviceType === 'mobile' ? 1 : 3, // 移动设备更小的移动阈值
+    edgeBufferZone: deviceType === 'mobile' ? 20 : 10,
+    responseDelay: deviceType === 'mobile' ? 4 : 16,
+    
+    // 高级设置 - 新增
+    velocityBased: true, // 启用基于速度的响应
+    maxVelocityFactor: 1.5, // 最大速度倍增因子
+    accelerationSensitivity: 0.1, // 加速度灵敏度
+    edgeSlowdownFactor: 0.7, // 边缘区域减速因子
+    touchHoldThreshold: 100, // 触摸保持检测阈值（毫秒）
+    visualFeedback: true, // 启用视觉反馈
+    feedbackDuration: 200 // 反馈持续时间（毫秒）
 };
+
+// 触摸速度和加速度跟踪 - 新增
+let touchVelocity = 0;
+let lastTouchTimestamp = 0;
+let touchAcceleration = 0;
+let isHighVelocity = false;
+let isNearEdge = false;
 
 // 记录上一次触摸位置，用于实现平滑移动
 let lastTouchY = null;
@@ -338,13 +349,14 @@ let touchStartTime = 0;
 let touchStartY = 0;
 // 是否为点击操作标志
 let isTapOperation = false;
+// 触摸保持相关 - 新增
+let touchHoldTimer = null;
+let touchFeedbackActive = false;
 
 // 处理触摸开始
 function handleTouchStart(e) {
-    // 只有在移动设备上才阻止默认行为
-    if (deviceType === 'mobile') {
-        e.preventDefault();
-    }
+    // 始终阻止默认行为，确保触摸只影响游戏而不影响网页滚动
+    e.preventDefault();
     
     // 更新最后触摸时间戳
     lastTouchTime = Date.now();
@@ -379,15 +391,14 @@ function handleTouchStart(e) {
     }
 }
 
-// 处理触摸移动
+// 处理触摸移动 - 增强版
 function handleTouchMove(e) {
-    // 只有在移动设备上才阻止默认行为
-    if (deviceType === 'mobile') {
-        e.preventDefault();
-    }
+    // 始终阻止默认行为，确保触摸滑动只控制球拍而不滚动网页
+    e.preventDefault();
     
     // 更新最后触摸时间戳
     lastTouchTime = Date.now();
+    const currentTimestamp = lastTouchTime;
     
     if (gameOver) return;
     
@@ -405,8 +416,36 @@ function handleTouchMove(e) {
         isTapOperation = false;
     }
     
+    // 清除触摸保持计时器
+    if (touchHoldTimer) {
+        clearTimeout(touchHoldTimer);
+        touchHoldTimer = null;
+    }
+    
+    // 计算触摸速度和加速度 - 新增
+    if (touchSettings.velocityBased && lastTouchTimestamp > 0 && lastTouchY !== null) {
+        const timeDelta = currentTimestamp - lastTouchTimestamp;
+        const distanceDelta = Math.abs(touchY - lastTouchY);
+        
+        if (timeDelta > 0 && distanceDelta > 0) {
+            // 计算速度（像素/毫秒）
+            const newVelocity = distanceDelta / timeDelta;
+            // 平滑速度变化
+            touchVelocity = touchVelocity * 0.7 + newVelocity * 0.3;
+            // 检测高速度移动
+            isHighVelocity = touchVelocity > 0.5;
+            // 计算加速度
+            touchAcceleration = newVelocity - touchVelocity;
+        }
+    }
+    lastTouchTimestamp = currentTimestamp;
+    
     // 更新最后触摸位置
     lastTouchY = touchY;
+    
+    // 检查是否接近边缘 - 新增
+    isNearEdge = touchY < touchSettings.edgeBufferZone * 2 || 
+                touchY > canvas.height - touchSettings.edgeBufferZone * 2;
     
     // 实现精确的触摸位置映射到球拍位置
     // 1. 应用屏幕边缘缓冲区处理
@@ -417,17 +456,49 @@ function handleTouchMove(e) {
         adjustedY = canvas.height - player.height / 2;
     }
     
-    // 2. 实现触摸平滑移动算法
+    // 2. 实现触摸平滑移动算法 - 增强版
     if (touchSettings.smoothingEnabled && lastTouchY !== null) {
-        // 根据设备类型调整平滑因子
-        const currentSmoothing = touchSettings.sensitivity;
-        const smoothedY = lastTouchY + (adjustedY - lastTouchY) * currentSmoothing;
-        adjustedY = smoothedY;
+        // 根据设备类型、速度和边缘位置调整平滑因子
+        let currentSmoothing = touchSettings.sensitivity;
+        
+        // 快速移动时减少平滑，提高响应速度
+        if (touchSettings.velocityBased && isHighVelocity) {
+            currentSmoothing = Math.max(currentSmoothing * 0.5, 0.1);
+            
+            // 应用速度倍增因子
+            const velocityFactor = 1 + Math.min(touchVelocity * touchSettings.accelerationSensitivity, 
+                                              touchSettings.maxVelocityFactor - 1);
+            const baseDelta = adjustedY - lastValidTouchY;
+            adjustedY = lastValidTouchY + baseDelta * velocityFactor;
+        } else {
+            // 常规平滑处理
+            adjustedY = lastValidTouchY + (adjustedY - lastValidTouchY) * currentSmoothing;
+        }
+        
+        // 边缘区域特殊处理 - 减速
+        if (isNearEdge) {
+            const distanceToTop = adjustedY;
+            const distanceToBottom = canvas.height - adjustedY;
+            const minDistance = Math.min(distanceToTop, distanceToBottom);
+            
+            if (minDistance < touchSettings.edgeBufferZone) {
+                const slowdownFactor = minDistance / touchSettings.edgeBufferZone * 
+                                      (1 - touchSettings.edgeSlowdownFactor) + 
+                                      touchSettings.edgeSlowdownFactor;
+                const originalDelta = adjustedY - lastValidTouchY;
+                adjustedY = lastValidTouchY + originalDelta * slowdownFactor;
+            }
+        }
     }
     
     // 3. 添加触摸区域容错处理，扩大可操作区域
     if (adjustedY < 0) adjustedY = 0;
     if (adjustedY > canvas.height) adjustedY = canvas.height;
+    
+    // 显示视觉反馈（如果启用）
+    if (touchSettings.visualFeedback && deviceType === 'mobile' && !touchFeedbackActive) {
+        showTouchFeedback(touchY);
+    }
     
     // 记录本次触摸位置用于下次平滑计算
     lastValidTouchY = touchY;
@@ -440,33 +511,60 @@ function handleTouchMove(e) {
     });
 }
 
-// 添加触摸结束事件处理，重置触摸状态并处理点击操作
+// 添加触摸结束事件处理，重置触摸状态并处理点击操作 - 增强版
 function handleTouchEnd(e) {
-    // 只有在移动设备上才阻止默认行为
-    if (deviceType === 'mobile') {
-        e.preventDefault();
-    }
+    // 始终阻止默认行为，确保触摸操作只影响游戏
+    e.preventDefault();
     
     // 更新最后触摸时间戳
     lastTouchTime = Date.now();
     
     // 计算触摸持续时间
     const touchDuration = Date.now() - touchStartTime;
+    const touchDistance = lastValidTouchY !== null ? Math.abs(lastValidTouchY - touchStartY) : 0;
     
     // 判断是否为快速点击操作（点击时间短且移动距离小）
-    if (isTapOperation && touchDuration < 200 && lastValidTouchY !== null) {
+    if (isTapOperation && touchDuration < 200 && touchDistance < 10) {
         // 处理触摸点击操作
         handleTouchTap();
+    } else if (touchDuration > touchSettings.touchHoldThreshold && touchDistance < 15) {
+        // 检测触摸保持操作
+        handleTouchHold();
     }
+    
+    // 重置触摸速度和加速度 - 新增
+    setTimeout(() => {
+        touchVelocity *= 0.8;
+        if (touchVelocity < 0.05) {
+            touchVelocity = 0;
+            isHighVelocity = false;
+        }
+    }, 50);
     
     // 重置触摸状态，但保留最后有效位置用于快速响应下次触摸
     setTimeout(() => {
         lastTouchY = null;
     }, touchSettings.responseDelay);
+    
+    // 重置状态
+    lastTouchTimestamp = 0;
+    touchAcceleration = 0;
+    isTapOperation = false;
+    
+    // 清除触摸保持计时器
+    if (touchHoldTimer) {
+        clearTimeout(touchHoldTimer);
+        touchHoldTimer = null;
+    }
 }
 
-// 处理触摸点击操作
+// 处理触摸点击操作 - 增强版
 function handleTouchTap() {
+    // 添加触觉反馈（如果支持）
+    if (deviceType === 'mobile' && 'vibrate' in navigator) {
+        navigator.vibrate(10); // 轻微振动10ms
+    }
+    
     if (gameOver) {
         // 游戏结束时点击重新开始
         resetGame();
@@ -511,7 +609,64 @@ function handleTouchTap() {
         
         // 初始化球的位置，但保持发球状态
         ball.isServing = true;
+    } else if (gameStarted && ball.isServing) {
+        // 在发球状态下的点击可以直接发球
+        const rect = canvas.getBoundingClientRect();
+        const touchX = rect.width / 2; // 简化，触摸点击默认从中心发球
+        
+        // 根据触摸位置精确控制发球角度
+        const normalizedY = (touchStartY - (canvas.height / 2)) / (canvas.height / 2);
+        
+        serveBall(touchX, touchStartY);
+        
+        // 检查是否可以增加发球速度
+        const distanceFromCenter = Math.abs(touchStartY - (canvas.height / 2));
+        if (distanceFromCenter < 30) {
+            boostBall(touchStartY);
+        }
     }
+}
+
+// 处理触摸保持操作 - 新增
+function handleTouchHold() {
+    // 可以在这里添加触摸保持相关的功能
+    // 例如：在游戏暂停时显示菜单
+    // 目前暂时不做特殊处理
+}
+
+// 显示触摸视觉反馈 - 新增
+function showTouchFeedback(touchY) {
+    if (!touchSettings.visualFeedback || touchFeedbackActive) return;
+    
+    touchFeedbackActive = true;
+    
+    // 绘制一个临时的视觉效果
+    const feedbackRadius = 20;
+    const feedbackX = player.x + player.width / 2;
+    const feedbackOpacity = 0.7;
+    
+    // 保存当前状态
+    ctx.save();
+    ctx.globalAlpha = feedbackOpacity;
+    ctx.fillStyle = 'rgba(52, 152, 219, 0.3)'; // 半透明蓝色
+    ctx.strokeStyle = 'rgba(52, 152, 219, 0.8)'; // 蓝色边框
+    ctx.lineWidth = 2;
+    
+    // 绘制反馈效果
+    ctx.beginPath();
+    ctx.arc(feedbackX, touchY, feedbackRadius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    
+    // 恢复状态
+    ctx.restore();
+    
+    // 设置定时器清除反馈
+    setTimeout(() => {
+        touchFeedbackActive = false;
+        // 重新绘制游戏画面以清除反馈
+        draw();
+    }, touchSettings.feedbackDuration);
 }
 
 // 统一的球拍位置更新函数 - 优化移动端体验
