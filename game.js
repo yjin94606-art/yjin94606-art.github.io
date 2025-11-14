@@ -717,7 +717,7 @@ function resetEventListeners() {
     canvas.removeEventListener('touchend', handleTouchEnd);
 }
 
-// 设置事件监听器 - 改进版本，支持混合输入环境
+// 设置事件监听器 - 增强版，全面支持公网环境的触摸操作
 function setupEventListeners() {
     // 移除现有的事件监听器以避免重复
     resetEventListeners();
@@ -734,13 +734,23 @@ function setupEventListeners() {
         }
     });
     
-    // 触摸事件监听器
+    // 触摸事件监听器 - 增强版，确保在GitHub Pages等公网环境中正常工作
+    // 添加额外的touchcancel事件处理
     canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
     canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
     canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
     
     // 防止右键菜单出现
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    
+    // 为document添加触摸事件监听器，作为备用方案
+    document.addEventListener('touchmove', function(e) {
+        // 检查触摸目标是否在画布上
+        if (canvas.contains(e.target)) {
+            e.preventDefault();
+        }
+    }, { passive: false, capture: true });
 }
 
 // 添加鼠标离开画布时的处理
